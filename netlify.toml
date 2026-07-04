@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build --workspace=apps/web"
+  publish = "apps/web/.next"
+
+# Deliberately no [[plugins]] block: Netlify's Next.js Runtime auto-detects
+# and installs itself with zero config. Pinning @netlify/plugin-nextjs
+# manually opts out of that and has known monorepo path-resolution bugs.
+#
+# Deliberately no `base` directory: leaving it unset means npm install and
+# the build command both run from the repo root, where npm workspace
+# hoisting puts shared packages like `next`. Setting base = "apps/web"
+# scopes dependency tracing to that subfolder only, which is what caused
+# the "Cannot find module next/dist/server/lib/start-server.js" crash —
+# the function bundler couldn't see the hoisted `next` package one level up.
+#
+# In the Netlify UI (Site configuration → Build & deploy → Build settings),
+# set "Package directory" = apps/web. Leave "Base directory" blank.
+#
+# Set NEXT_PUBLIC_API_URL in the Netlify dashboard (Environment variables),
+# not here, so it can differ between production and deploy previews:
+#   NEXT_PUBLIC_API_URL = https://<your-render-service>.onrender.com/api

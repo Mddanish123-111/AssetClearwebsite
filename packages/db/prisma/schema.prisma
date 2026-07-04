@@ -1,0 +1,303 @@
+// AssetClear database schema
+// Domain: office dismantling / clearance operations
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN        // full access, org settings, billing
+  OPS_MANAGER  // schedules jobs, assigns crew, approves quotes
+  CREW         // field staff, logs assets, updates job status
+  CLIENT       // external, read-only view of their own jobs
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          Role     @default(CREW)
+  phone         String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // If role = CLIENT, this links them to the company they can view
+  clientId      String?
+  client        Client?  @relation(fields: [clientId], references: [id])
+
+  jobsAsLead    Job[]          @relation("JobLead")
+  crewAssignments JobCrew[]
+  auditLogs     AuditLog[]
+
+  @@index([clientId])
+}
+
+// ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+model Client {
+  id            String   @id @default(cuid())
+  companyName   String
+  billingEmail  String
+  billingAddress String?
+  phone         String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contacts      ClientContact[]
+  jobs          Job[]
+  quotes        Quote[]
+  invoices      Invoice[]
+  portalUsers   User[]
+}
+
+model ClientContact {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  phone     String?
+  title     String?
+
+  @@index([clientId])
+}
+
+// ---------------------------------------------------------------------------
+// Jobs
+// ---------------------------------------------------------------------------
+
+enum JobStatus {
+  QUOTED
+  SCHEDULED
+  IN_PROGRESS
+  AWAITING_DISPOSAL
+  COMPLETED
+  CANCELLED
+}
+
+model Job {
+  id            String    @id @default(cuid())
+  jobNumber     String    @unique // e.g. AC-2026-0042
+  clientId      String
+  client        Client    @relation(fields: [clientId], references: [id])
+  siteAddress   String
+  siteNotes     String?
+  status        JobStatus @default(QUOTED)
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  completedAt    DateTime?
+
+  leadId        String?
+  lead          User?     @relation("JobLead", fields: [leadId], references: [id])
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  crew          JobCrew[]
+  assets        Asset[]
+  quotes        Quote[]
+  invoices      Invoice[]
+  certificates  Certificate[]
+  photos        JobPhoto[]
+  statusHistory JobStatusEvent[]
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model JobCrew {
+  id      String @id @default(cuid())
+  jobId   String
+  job     Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  role    String? // e.g. "Lead Dismantler", "Driver"
+
+  @@unique([jobId, userId])
+}
+
+model JobStatusEvent {
+  id        String    @id @default(cuid())
+  jobId     String
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status    JobStatus
+  note      String?
+  createdAt DateTime  @default(now())
+
+  @@index([jobId])
+}
+
+model JobPhoto {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  url       String
+  caption   String?
+  stage     String   // "before" | "after"
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+}
+
+// ---------------------------------------------------------------------------
+// Assets (the items removed during a clearance job)
+// ---------------------------------------------------------------------------
+
+enum AssetCategory {
+  FURNITURE
+  IT_EQUIPMENT
+  APPLIANCE
+  FIXTURE
+  ELECTRONICS
+  DOCUMENTS
+  MISC
+}
+
+enum AssetCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  SCRAP
+}
+
+enum Disposition {
+  PENDING
+  RESELL
+  DONATE
+  RECYCLE
+  E_WASTE
+  LANDFILL
+  DATA_DESTRUCTION
+}
+
+model Asset {
+  id            String          @id @default(cuid())
+  assetTag      String          @unique // e.g. AC-A0001
+  jobId         String
+  job           Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  category      AssetCategory
+  description   String
+  condition     AssetCondition
+  disposition   Disposition     @default(PENDING)
+  estimatedValue Decimal?       @db.Decimal(10, 2)
+  photoUrl      String?
+  loggedById    String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  certificate   Certificate?    @relation(fields: [certificateId], references: [id])
+  certificateId String?
+
+  @@index([jobId])
+  @@index([disposition])
+}
+
+// ---------------------------------------------------------------------------
+// Compliance
+// ---------------------------------------------------------------------------
+
+enum CertificateType {
+  DATA_DESTRUCTION
+  RECYCLING_WEEE
+  DISPOSAL_CHAIN_OF_CUSTODY
+  DONATION_RECEIPT
+}
+
+model Certificate {
+  id          String          @id @default(cuid())
+  jobId       String
+  job         Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  type        CertificateType
+  issuedTo    String          // client or regulatory body
+  issuedAt    DateTime        @default(now())
+  documentUrl String?
+  assets      Asset[]
+
+  @@index([jobId])
+}
+
+// ---------------------------------------------------------------------------
+// Commercial
+// ---------------------------------------------------------------------------
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  quoteNumber String      @unique
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id])
+  jobId       String?
+  job         Job?        @relation(fields: [jobId], references: [id])
+  status      QuoteStatus @default(DRAFT)
+  amount      Decimal     @db.Decimal(10, 2)
+  validUntil  DateTime?
+  lineItems   Json        // [{ description, quantity, unitPrice }]
+  createdAt   DateTime    @default(now())
+
+  @@index([clientId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id])
+  jobId         String?
+  job           Job?          @relation(fields: [jobId], references: [id])
+  status        InvoiceStatus @default(DRAFT)
+  amount        Decimal       @db.Decimal(10, 2)
+  dueDate       DateTime?
+  paidAt        DateTime?
+  lineItems     Json
+  createdAt     DateTime      @default(now())
+
+  @@index([clientId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}

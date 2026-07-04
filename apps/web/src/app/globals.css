@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Barlow Condensed", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+body {
+  @apply bg-paper text-ink font-body antialiased;
+}
+
+@layer components {
+  /* Page-level section title, condensed + uppercase: the ops-console header voice */
+  .h-page {
+    @apply font-display text-3xl uppercase tracking-wide text-ink;
+  }
+
+  /* Asset tag: styled like a physical tear-off tag used on cleared inventory */
+  .asset-tag {
+    @apply inline-flex items-center gap-2 rounded-sm border border-dashed border-line
+           bg-white px-2.5 py-1 font-mono text-xs tracking-tag text-ink/80;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-sm bg-amber px-4 py-2
+           font-body text-sm font-semibold text-ink transition hover:bg-amber/90
+           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+           focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-sm border border-line bg-white
+           px-4 py-2 font-body text-sm font-medium text-ink transition hover:bg-paper
+           focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2
+           focus-visible:outline-ink;
+  }
+
+  .card {
+    @apply rounded-sm border border-line bg-white shadow-sm;
+  }
+
+  .status-chip {
+    @apply inline-flex items-center rounded-sm px-2 py-0.5 font-mono text-[11px]
+           uppercase tracking-tag;
+  }
+}
